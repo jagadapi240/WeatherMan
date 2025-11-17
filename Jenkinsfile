@@ -67,25 +67,26 @@ pipeline {
                 dir('build') {
                     withCredentials([
                         usernamePassword(
-                            credentialsId: "${NEXUS_CREDENTIALS}",
+                            credentialsId: 'nexus-creds',   // your Nexus creds ID
                             usernameVariable: 'NEXUS_USER',
                             passwordVariable: 'NEXUS_PASS'
                         )
                     ]) {
-                        sh """
+                        sh '''
                             echo "Uploading build files to Nexus RAW repository..."
 
-                            for file in \$(find . -type f); do
-                                echo "Uploading: \$file"
+                            for file in $(find . -type f); do
+                                echo "Uploading: $file"
                                 curl -u "$NEXUS_USER:$NEXUS_PASS" \
-                                  --upload-file "\$file" \
-                                  "http://${NEXUS_URL}/repository/${NEXUS_REPO}/\${file}"
+                                --upload-file "$file" \
+                                "http://nexus:8081/repository/js/${file#./}"
                             done
-                        """
+                        '''
                     }
                 }
             }
         }
+
 
         /* 6. BUILD DOCKER IMAGE */
         stage('Build Docker Image') {
