@@ -8,7 +8,7 @@ pipeline {
 
     tools {
         // Must match the NodeJS tool name configured in Jenkins
-        nodejs 'NodeJS'
+        nodejs 'NodeJS16'
     }
 
     environment {
