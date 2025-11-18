@@ -11,14 +11,15 @@ env:
   IMAGE_NAME: jagadapi240/weatherman
   IMAGE_VERSION: 0.0.1
   NEXUS_REPO: js
-  NEXUS_HOST: 51.21.202.150:8081          # or nexus:8081 if you prefer internal
+  NEXUS_HOST: 51.21.202.150:8081   # use your Nexus host:port
+  # SONAR_HOST_URL and SONAR_TOKEN will come from secrets
+  # NEXUS_USER / NEXUS_PASS from secrets
+  # DOCKERHUB_USERNAME / DOCKERHUB_TOKEN from secrets
+  # EC2_HOST / EC2_USER / EC2_SSH_KEY from secrets
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-
-    env:
-      IMAGE_TAG: ${{ env.IMAGE_VERSION }}-${{ github.run_number }}
 
     steps:
       - name: Checkout repo
@@ -67,7 +68,9 @@ jobs:
       # 4) Build Docker image
       - name: Build Docker image
         run: |
-          docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
+          IMAGE_TAG=${{ env.IMAGE_VERSION }}-${{ github.run_number }}
+          echo "Building image ${{ env.IMAGE_NAME }}:${IMAGE_TAG}"
+          docker build -t ${{ env.IMAGE_NAME }}:${IMAGE_TAG} .
 
       # 5) Push Docker image to Docker Hub
       - name: Login to Docker Hub
@@ -75,18 +78,14 @@ jobs:
 
       - name: Push Docker image
         run: |
-          docker push ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-          # optional latest tag
-          docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} ${{ env.IMAGE_NAME }}:latest
+          IMAGE_TAG=${{ env.IMAGE_VERSION }}-${{ github.run_number }}
+          docker push ${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+          docker tag ${{ env.IMAGE_NAME }}:${IMAGE_TAG} ${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.IMAGE_NAME }}:latest
 
   deploy:
     runs-on: ubuntu-latest
     needs: build-and-push
-
-    env:
-      IMAGE_TAG: ${{ env.IMAGE_VERSION }}-${{ github.run_number }}
-      IMAGE_FULL: jagadapi240/weatherman:${{ env.IMAGE_VERSION }}-${{ github.run_number }}
 
     steps:
       - name: Deploy to EC2 via SSH
@@ -96,8 +95,11 @@ jobs:
           username: ${{ secrets.EC2_USER }}         # e.g. ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}          # private key contents
           script: |
-            echo "Pulling latest image..."
-            docker pull ${{ env.IMAGE_FULL }}
+            IMAGE_TAG=${{ env.IMAGE_VERSION }}-${{ github.run_number }}
+            IMAGE_FULL=${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+
+            echo "Pulling image $IMAGE_FULL..."
+            docker pull $IMAGE_FULL
 
             echo "Stopping old container..."
             docker rm -f weatherman-app || true
@@ -106,6 +108,6 @@ jobs:
             docker run -d \
               --name weatherman-app \
               -p 8083:80 \
-              ${{ env.IMAGE_FULL }}
+              $IMAGE_FULL
 
             docker ps | grep weatherman-app || echo "Container not running!"
