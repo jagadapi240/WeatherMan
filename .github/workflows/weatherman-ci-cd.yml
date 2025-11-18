@@ -1,0 +1,111 @@
+name: WeatherMan CI/CD
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+env:
+  APP_NAME: weatherman
+  IMAGE_NAME: jagadapi240/weatherman
+  IMAGE_VERSION: 0.0.1
+  NEXUS_REPO: js
+  NEXUS_HOST: 51.21.202.150:8081          # or nexus:8081 if you prefer internal
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_TAG: ${{ env.IMAGE_VERSION }}-${{ github.run_number }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # 1) Node setup + npm build
+      - name: Set up Node 16
+        uses: actions/setup-node@v4
+        with:
+          node-version: 16
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build WeatherMan app
+        run: npm run build
+
+      # 2) SonarQube analysis (self-hosted)
+      - name: SonarQube Scan
+        run: |
+          docker run --rm \
+            -e SONAR_HOST_URL=${{ secrets.SONAR_HOST_URL }} \
+            -e SONAR_LOGIN=${{ secrets.SONAR_TOKEN }} \
+            -v "${{ github.workspace }}":/usr/src \
+            sonarsource/sonar-scanner-cli \
+            -Dsonar.projectKey=weatherman-js \
+            -Dsonar.projectName=WeatherMan \
+            -Dsonar.sources=./src
+
+      # 3) Upload build/ files to Nexus RAW
+      - name: Upload build to Nexus RAW repo
+        working-directory: build
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
+        run: |
+          echo "Uploading build files to Nexus RAW repository..."
+
+          for file in $(find . -type f); do
+            echo "Uploading: $file"
+            curl -u "$NEXUS_USER:$NEXUS_PASS" \
+              --upload-file "$file" \
+              "http://${{ env.NEXUS_HOST }}/repository/${{ env.NEXUS_REPO }}/${file#./}"
+          done
+
+      # 4) Build Docker image
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
+
+      # 5) Push Docker image to Docker Hub
+      - name: Login to Docker Hub
+        run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          # optional latest tag
+          docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} ${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.IMAGE_NAME }}:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    env:
+      IMAGE_TAG: ${{ env.IMAGE_VERSION }}-${{ github.run_number }}
+      IMAGE_FULL: jagadapi240/weatherman:${{ env.IMAGE_VERSION }}-${{ github.run_number }}
+
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}         # e.g. ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}          # private key contents
+          script: |
+            echo "Pulling latest image..."
+            docker pull ${{ env.IMAGE_FULL }}
+
+            echo "Stopping old container..."
+            docker rm -f weatherman-app || true
+
+            echo "Starting new container..."
+            docker run -d \
+              --name weatherman-app \
+              -p 8083:80 \
+              ${{ env.IMAGE_FULL }}
+
+            docker ps | grep weatherman-app || echo "Container not running!"
