@@ -160,7 +160,7 @@ Manage Jenkins → Global Tool Configuration → NodeJS
 
 ---
 
-## JENKINS CREDENTIALS (YOU CREATED)
+## JENKINS CREDENTIALS
 
 | ID              | TYPE                          | USED FOR       |
 | --------------- | ----------------------------- | -------------- |
@@ -205,7 +205,7 @@ Use `id_ed25519` as private key in:
 
 ---
 
-# 6. DOCKERFILE (FINAL WORKING VERSION)
+# 6. DOCKERFILE
 
 File: `Dockerfile`
 
@@ -237,7 +237,7 @@ CMD ["nginx", "-g", "daemon off;"]
 
 ---
 
-# 7. JENKINSFILE (FINAL VERSION USED BY YOU)
+# 7. JENKINSFILE
 
 ```groovy
 pipeline {
@@ -376,7 +376,7 @@ pipeline {
 
 ---
 
-# 8. GITHUB ACTIONS WORKFLOW (FINAL WORKING VERSION)
+# 8. GITHUB ACTIONS WORKFLOW
 
 File: `.github/workflows/weatherman-ci-cd.yml`
 
